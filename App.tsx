@@ -3,8 +3,9 @@ import { THEMES, NEWS_SOURCES } from './constants';
 import { ThemeCard } from './components/ThemeCard';
 import { SourceChip } from './components/SourceChip';
 import { NewsletterPreview } from './components/NewsletterPreview';
+import { ScheduleModal } from './components/ScheduleModal';
 import { generateWeeklyNewsletter } from './services/geminiService';
-import { AppStatus, NewsletterData, CustomSource } from './types';
+import { AppStatus, NewsletterData, CustomSource, ScheduleConfig } from './types';
 
 function App() {
   const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
@@ -16,6 +17,8 @@ function App() {
   const [status, setStatus] = useState<AppStatus>('selection');
   const [newsletterData, setNewsletterData] = useState<NewsletterData | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [activeSchedule, setActiveSchedule] = useState<ScheduleConfig | null>(null);
 
   const toggleTheme = (id: string) => {
     setSelectedThemes(prev => 
@@ -68,6 +71,12 @@ function App() {
     }
   };
 
+  const handleConfirmSchedule = (config: ScheduleConfig) => {
+    setActiveSchedule(config);
+    setIsScheduleModalOpen(false);
+    setStatus('scheduled');
+  };
+
   const handleSendEmail = (email: string) => {
     setStatus('sent');
   };
@@ -78,9 +87,30 @@ function App() {
     setSelectedThemes([]);
     setSelectedSources([]);
     setCustomSources([]);
+    setActiveSchedule(null);
   };
 
   // --- Views ---
+
+  if (status === 'scheduled') {
+    return (
+      <div className="min-h-screen bg-indigo-600 flex flex-col items-center justify-center p-4 text-center text-white">
+        <div className="bg-white/10 p-8 rounded-full mb-6 animate-pulse">
+           <svg className="w-16 h-16" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+        </div>
+        <h1 className="text-4xl font-bold mb-4 font-serif">Automation Active!</h1>
+        <p className="text-indigo-100 text-lg max-w-md mx-auto mb-8">
+          We'll send your {activeSchedule?.frequency} news report to <strong>{activeSchedule?.recipients}</strong> every day at {activeSchedule?.sendTime}.
+        </p>
+        <button 
+          onClick={handleReset}
+          className="bg-white text-indigo-600 px-8 py-3 rounded-full font-bold shadow-lg hover:bg-indigo-50 transition-colors"
+        >
+          Return to Dashboard
+        </button>
+      </div>
+    );
+  }
 
   if (status === 'sent') {
     return (
@@ -252,27 +282,51 @@ function App() {
           </div>
         </section>
 
-        <div className="sticky bottom-6 z-20 flex justify-center">
+        <div className="sticky bottom-6 z-20 flex flex-col sm:flex-row items-center justify-center gap-4 px-4">
            <button
              onClick={handleGenerate}
              disabled={selectedThemes.length === 0}
              className={`
-               group relative px-10 py-5 rounded-full font-bold text-lg shadow-2xl transition-all transform active:scale-95
+               group flex-1 max-w-xs relative px-10 py-5 rounded-full font-bold text-lg shadow-2xl transition-all transform active:scale-95
                ${selectedThemes.length > 0 
                  ? 'bg-gray-900 text-white hover:bg-indigo-600 hover:-translate-y-1' 
                  : 'bg-gray-200 text-gray-400 cursor-not-allowed'}
              `}
            >
-             <span className="flex items-center gap-3">
-               Compile My Edition
+             <span className="flex items-center justify-center gap-3">
+               Compile Now
                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+               </svg>
+             </span>
+           </button>
+
+           <button
+             onClick={() => setIsScheduleModalOpen(true)}
+             disabled={selectedThemes.length === 0}
+             className={`
+               group flex-1 max-w-xs relative px-10 py-5 rounded-full font-bold text-lg shadow-xl border-2 transition-all transform active:scale-95
+               ${selectedThemes.length > 0 
+                 ? 'bg-white border-indigo-600 text-indigo-600 hover:bg-indigo-50 hover:-translate-y-1' 
+                 : 'bg-white border-gray-200 text-gray-300 cursor-not-allowed'}
+             `}
+           >
+             <span className="flex items-center justify-center gap-3">
+               Schedule Recurring
+               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                </svg>
              </span>
            </button>
         </div>
 
       </main>
+
+      <ScheduleModal 
+        isOpen={isScheduleModalOpen}
+        onClose={() => setIsScheduleModalOpen(false)}
+        onConfirm={handleConfirmSchedule}
+      />
 
       <footer className="bg-white border-t border-gray-200 py-12">
         <div className="text-center text-gray-400 text-sm">

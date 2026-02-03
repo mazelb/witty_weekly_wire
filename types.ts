@@ -40,4 +40,11 @@ export interface NewsletterData {
   generatedAt: Date;
 }
 
-export type AppStatus = 'selection' | 'generating' | 'preview' | 'sent' | 'error';
+export interface ScheduleConfig {
+  frequency: 'daily' | 'weekly' | 'biweekly';
+  deliveryType: 'personal' | 'mailing-list';
+  recipients: string;
+  sendTime: string;
+}
+
+export type AppStatus = 'selection' | 'generating' | 'preview' | 'sent' | 'scheduled' | 'error';
