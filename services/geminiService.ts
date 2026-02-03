@@ -1,12 +1,35 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { GroundingSource, NewsletterData, CustomSource } from "../types";
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+// Mock data representing newsletters found in a user's Gmail
+const MOCK_GMAIL_NEWSLETTERS = [
+  { sender: "The Morning Brew", subject: "Nvidia's new chip & Coffee markets", summary: "Nvidia announced the B200 Blackwell chip. Markets reacted positively. Also, coffee prices hit a 30-year high." },
+  { sender: "TLDR Tech", subject: "OpenAI's latest model leaks", summary: "Rumors of a new model 'Strawberry' or Q* surfacing in internal testing. Potential reasoning capabilities discussed." },
+  { sender: "Substack: Hardware Junkie", subject: "The state of RISC-V in 2024", summary: "Adoption of RISC-V in data centers is accelerating. China leads in implementation." }
+];
+
+const fetchGmailNewslettersTool: FunctionDeclaration = {
+  name: 'fetch_gmail_newsletters',
+  parameters: {
+    type: Type.OBJECT,
+    description: 'Fetch recent newsletter summaries from the user connected Gmail inbox.',
+    properties: {
+      days_back: {
+        type: Type.NUMBER,
+        description: 'Number of days of history to fetch (default is 7).',
+      },
+    },
+    required: ['days_back'],
+  },
+};
+
 export const generateWeeklyNewsletter = async (
   themes: string[], 
   preferredSources: string[], 
-  customSources: CustomSource[]
+  customSources: CustomSource[],
+  isGmailConnected: boolean
 ): Promise<NewsletterData> => {
   if (!process.env.API_KEY) {
     throw new Error("API Key is missing");
@@ -15,9 +38,10 @@ export const generateWeeklyNewsletter = async (
   const sourcesList = [...preferredSources];
   const customContext = customSources.map(cs => `${cs.type === 'url' ? 'Website' : cs.type === 'social' ? 'Social Account' : 'Newsletter name'}: ${cs.value}`).join(', ');
 
-  const sourcesContext = (sourcesList.length > 0 || customSources.length > 0)
+  const sourcesContext = (sourcesList.length > 0 || customSources.length > 0 || isGmailConnected)
     ? `Please prioritize information and news from these specific sources: ${sourcesList.join(', ')}. 
-       Additionally, pay special attention to updates from these specific links or entities provided by the user: ${customContext}.`
+       Additionally, pay special attention to updates from these specific links or entities provided by the user: ${customContext}.
+       ${isGmailConnected ? "The user's Gmail is connected. Use the 'fetch_gmail_newsletters' tool to read their recent subscriptions and integrate their unique insights." : ""}`
     : "Search across high-quality reputable news outlets across the web.";
 
   const prompt = `
@@ -27,50 +51,74 @@ export const generateWeeklyNewsletter = async (
     ${sourcesContext}
 
     Guidelines:
-    1. **Tone**: Light, refreshing, humorous, but strictly factual. Avoid dry corporate speak. Make it feel like a smart friend texting you the updates.
-    2. **Structure**: 
-       - A catchy, pun-filled Title for this week's edition.
-       - A brief, funny Intro.
-       - Separate sections for each selected topic.
-       - For each topic, pick the top 1-2 most significant news stories from the LAST WEEK. 
-       - If nothing major happened, mention a smaller interesting tidbit.
-       - A "Fun Fact of the Week" at the end.
-    3. **Formatting**: Use Markdown. Use H2 (##) for section headers. Use bolding for emphasis.
-    4. **Constraints**: Keep it under 800 words total. strictly English.
+    1. **Tone**: Light, refreshing, humorous, but strictly factual. Avoid dry corporate speak.
+    2. **Structure**: Catchy Title, Funny Intro, Topic Sections, Fun Fact.
+    3. **Formatting**: Markdown (H2 for headers).
+    4. **Integration**: If you use data from Gmail, mention it subtly (e.g., "Scanning your inbox, we saw...").
 
-    You MUST use the Google Search tool to find the actual news from the last 7 days and verify updates from the user-provided sources if they are links.
+    You MUST use Google Search for general news and the Gmail tool if connected.
   `;
 
   try {
-    const response = await ai.models.generateContent({
+    const config: any = {
+      tools: [{ googleSearch: {} }],
+      temperature: 0.7, 
+    };
+
+    if (isGmailConnected) {
+      config.tools.push({ functionDeclarations: [fetchGmailNewslettersTool] });
+    }
+
+    let response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-        temperature: 0.7, 
-      }
+      config
     });
 
-    const content = response.text || "Sorry, I couldn't write the newsletter this time. Writer's block!";
-    
+    // Handle tool calls
+    if (response.functionCalls && response.functionCalls.length > 0) {
+      const toolCall = response.functionCalls[0];
+      if (toolCall.name === 'fetch_gmail_newsletters') {
+        // Execute the tool and send back the results
+        const result = { newsletters: MOCK_GMAIL_NEWSLETTERS };
+        
+        // Final generation with tool result
+        response = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: [
+            { role: 'user', parts: [{ text: prompt }] },
+            { role: 'model', parts: [{ functionCall: toolCall }] },
+            { 
+              role: 'user', 
+              parts: [{ 
+                functionResponse: { 
+                  name: 'fetch_gmail_newsletters', 
+                  id: toolCall.id, 
+                  response: { result } 
+                } 
+              }] 
+            }
+          ],
+          config: { tools: [{ googleSearch: {} }] }
+        });
+      }
+    }
+
+    const content = response.text || "Sorry, I couldn't write the newsletter this time.";
     const rawChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
     const sources: GroundingSource[] = [];
 
     rawChunks.forEach((chunk: any) => {
       if (chunk.web?.uri && chunk.web?.title) {
-        sources.push({
-          uri: chunk.web.uri,
-          title: chunk.web.title
-        });
+        sources.push({ uri: chunk.web.uri, title: chunk.web.title });
       }
     });
 
-    const uniqueSources = sources.filter((v, i, a) => a.findIndex(t => (t.uri === v.uri)) === i);
-
     return {
       content,
-      sources: uniqueSources,
+      sources: sources.filter((v, i, a) => a.findIndex(t => (t.uri === v.uri)) === i),
       generatedAt: new Date(),
+      gmailUsed: isGmailConnected
     };
 
   } catch (error) {

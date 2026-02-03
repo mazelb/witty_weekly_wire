@@ -38,6 +38,7 @@ export interface NewsletterData {
   content: string;
   sources: GroundingSource[];
   generatedAt: Date;
+  gmailUsed?: boolean;
 }
 
 export interface ScheduleConfig {
