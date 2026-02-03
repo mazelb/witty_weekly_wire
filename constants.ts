@@ -1,4 +1,4 @@
-import { ThemeId, ThemeOption } from './types';
+import { ThemeId, ThemeOption, NewsSource } from './types';
 
 export const THEMES: ThemeOption[] = [
   {
@@ -37,4 +37,15 @@ export const THEMES: ThemeOption[] = [
     icon: "🌍",
     description: "Global events, minus the doomscrolling vibe."
   },
+];
+
+export const NEWS_SOURCES: NewsSource[] = [
+  { id: 'techcrunch', name: 'TechCrunch', url: 'techcrunch.com', icon: '⚡' },
+  { id: 'theverge', name: 'The Verge', url: 'theverge.com', icon: '📐' },
+  { id: 'wired', name: 'Wired', url: 'wired.com', icon: '🔌' },
+  { id: 'mit', name: 'MIT Tech Review', url: 'technologyreview.com', icon: '🏛️' },
+  { id: 'arstechnica', name: 'Ars Technica', url: 'arstechnica.com', icon: '📜' },
+  { id: 'reuters', name: 'Reuters', url: 'reuters.com', icon: '📡' },
+  { id: 'bloomberg', name: 'Bloomberg', url: 'bloomberg.com', icon: '📉' },
+  { id: 'nature', name: 'Nature', url: 'nature.com', icon: '🍃' },
 ];

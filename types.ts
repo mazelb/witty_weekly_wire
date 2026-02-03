@@ -16,6 +16,19 @@ export interface ThemeOption {
   description: string;
 }
 
+export interface NewsSource {
+  id: string;
+  name: string;
+  url: string;
+  icon: string;
+}
+
+export interface CustomSource {
+  id: string;
+  value: string;
+  type: 'url' | 'social' | 'newsletter';
+}
+
 export interface GroundingSource {
   title: string;
   uri: string;
