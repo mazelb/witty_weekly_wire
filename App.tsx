@@ -6,7 +6,7 @@ import { NewsletterPreview } from './components/NewsletterPreview';
 import { ScheduleModal } from './components/ScheduleModal';
 import { HistoryModal } from './components/HistoryModal';
 import { generateWeeklyNewsletter } from './services/geminiService';
-import { AppStatus, NewsletterData, CustomSource, ScheduleConfig } from './types';
+import { AppStatus, NewsletterData, CustomSource, ScheduleConfig, NewsSource } from './types';
 
 function App() {
   const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
@@ -15,6 +15,11 @@ function App() {
   const [customInputValue, setCustomInputValue] = useState('');
   const [customInputType, setCustomInputType] = useState<CustomSource['type']>('url');
   
+  // Dynamic Sources State
+  const [sources, setSources] = useState<NewsSource[]>(NEWS_SOURCES);
+  const [isAddingSource, setIsAddingSource] = useState(false);
+  const [newSourceData, setNewSourceData] = useState({ name: '', url: '' });
+
   const [gmailConnected, setGmailConnected] = useState(false);
   const [isConnectingGmail, setIsConnectingGmail] = useState(false);
 
@@ -30,13 +35,12 @@ function App() {
   // History State
   const [history, setHistory] = useState<NewsletterData[]>([]);
 
-  // Load history from local storage on mount
+  // Load history & sources from local storage on mount
   useEffect(() => {
-    const saved = localStorage.getItem('newsletter_history');
-    if (saved) {
+    const savedHistory = localStorage.getItem('newsletter_history');
+    if (savedHistory) {
       try {
-        const parsed = JSON.parse(saved);
-        // Rehydrate Date objects
+        const parsed = JSON.parse(savedHistory);
         const hydrated = parsed.map((item: any) => ({
           ...item,
           generatedAt: new Date(item.generatedAt)
@@ -46,12 +50,26 @@ function App() {
         console.error("Failed to parse history", e);
       }
     }
+
+    const savedSources = localStorage.getItem('custom_news_sources');
+    if (savedSources) {
+      try {
+        setSources(JSON.parse(savedSources));
+      } catch (e) {
+        console.error("Failed to parse sources", e);
+      }
+    }
   }, []);
 
-  // Save history to local storage whenever it changes
+  // Save history to local storage
   useEffect(() => {
     localStorage.setItem('newsletter_history', JSON.stringify(history));
   }, [history]);
+
+  // Save sources to local storage
+  useEffect(() => {
+    localStorage.setItem('custom_news_sources', JSON.stringify(sources));
+  }, [sources]);
 
   const toggleTheme = (id: string) => {
     setSelectedThemes(prev => 
@@ -67,6 +85,28 @@ function App() {
         ? prev.filter(s => s !== id)
         : [...prev, id]
     );
+  };
+
+  const handleAddSource = () => {
+    if (!newSourceData.name.trim()) return;
+    
+    const newSource: NewsSource = {
+      id: `custom-${Date.now()}`,
+      name: newSourceData.name.trim(),
+      url: newSourceData.url.trim() || newSourceData.name.trim(),
+      icon: '📰' // Default icon for custom sources
+    };
+    
+    setSources([...sources, newSource]);
+    setNewSourceData({ name: '', url: '' });
+    setIsAddingSource(false);
+  };
+
+  const handleDeleteSource = (id: string) => {
+    if (window.confirm('Are you sure you want to remove this source?')) {
+      setSources(sources.filter(s => s.id !== id));
+      setSelectedSources(prev => prev.filter(sid => sid !== id));
+    }
   };
 
   const handleConnectGmail = () => {
@@ -101,12 +141,12 @@ function App() {
 
     try {
       const themesLabels = selectedThemes.map(id => THEMES.find(t => t.id === id)?.label || id);
-      const sourcesLabels = selectedSources.map(id => NEWS_SOURCES.find(s => s.id === id)?.name || id);
+      // Use the dynamic `sources` state instead of the static `NEWS_SOURCES`
+      const sourcesLabels = selectedSources.map(id => sources.find(s => s.id === id)?.name || id);
       
       const data = await generateWeeklyNewsletter(themesLabels, sourcesLabels, customSources, gmailConnected);
       
       setNewsletterData(data);
-      // Add to history (newest first)
       setHistory(prev => [data, ...prev]);
       setStatus('preview');
     } catch (error) {
@@ -256,10 +296,56 @@ function App() {
             {/* Standard Sources */}
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
               <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-4">Popular Publications</h3>
-              <div className="flex flex-wrap gap-2">
-                {NEWS_SOURCES.map(source => (
-                  <SourceChip key={source.id} source={source} isSelected={selectedSources.includes(source.id)} onToggle={toggleSource} />
+              <div className="flex flex-wrap gap-2 items-center">
+                {sources.map(source => (
+                  <SourceChip 
+                    key={source.id} 
+                    source={source} 
+                    isSelected={selectedSources.includes(source.id)} 
+                    onToggle={toggleSource} 
+                    onDelete={handleDeleteSource}
+                  />
                 ))}
+                
+                {/* Dynamic Add Button / Form */}
+                {isAddingSource ? (
+                  <div className="flex items-center gap-1 p-1 pl-3 border-2 border-indigo-100 rounded-full bg-indigo-50/50 animate-in fade-in slide-in-from-left-2 h-[46px]">
+                    <input 
+                      autoFocus
+                      placeholder="Name"
+                      className="bg-transparent outline-none text-sm w-24 font-semibold text-gray-700 placeholder-gray-400"
+                      value={newSourceData.name}
+                      onChange={e => setNewSourceData({...newSourceData, name: e.target.value})}
+                      onKeyPress={(e) => e.key === 'Enter' && handleAddSource()}
+                    />
+                    <div className="w-px h-4 bg-gray-300 mx-1"></div>
+                    <input 
+                      placeholder="URL (optional)"
+                      className="bg-transparent outline-none text-xs w-24 text-gray-600 placeholder-gray-400"
+                      value={newSourceData.url}
+                      onChange={e => setNewSourceData({...newSourceData, url: e.target.value})}
+                      onKeyPress={(e) => e.key === 'Enter' && handleAddSource()}
+                    />
+                    <button 
+                      onClick={handleAddSource} 
+                      className="bg-green-500 text-white rounded-full p-1 hover:bg-green-600 shadow-sm ml-1"
+                      disabled={!newSourceData.name.trim()}
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                    </button>
+                    <button onClick={() => setIsAddingSource(false)} className="text-gray-400 hover:text-red-500 p-1">
+                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                ) : (
+                  <button 
+                    onClick={() => setIsAddingSource(true)}
+                    className="flex items-center gap-2 px-3 py-2 rounded-full border-2 border-dashed border-gray-300 text-gray-400 hover:border-indigo-400 hover:text-indigo-500 hover:bg-indigo-50 transition-all"
+                  >
+                    <span className="text-lg leading-none">+</span>
+                    <span className="font-semibold text-sm">Add</span>
+                  </button>
+                )}
               </div>
             </div>
 
