@@ -60,8 +60,6 @@ export const generateWeeklyNewsletter = async (
 
   try {
     // Note: We use gemini-3-flash-preview which supports googleSearch.
-    // Config Rule: When using googleSearch, only googleSearch is permitted. 
-    // Mixing googleSearch with functionDeclarations (Function Calling) often results in a 500 error.
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
@@ -90,10 +88,12 @@ export const generateWeeklyNewsletter = async (
     const uniqueSources = sources.filter((v, i, a) => a.findIndex(t => (t.uri === v.uri)) === i);
 
     return {
+      id: Math.random().toString(36).substr(2, 9) + Date.now().toString(36),
       content,
       sources: uniqueSources,
       generatedAt: new Date(),
-      gmailUsed: isGmailConnected
+      gmailUsed: isGmailConnected,
+      themes: themes
     };
 
   } catch (error) {

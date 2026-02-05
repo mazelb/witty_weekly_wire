@@ -35,10 +35,12 @@ export interface GroundingSource {
 }
 
 export interface NewsletterData {
+  id: string;
   content: string;
   sources: GroundingSource[];
   generatedAt: Date;
   gmailUsed?: boolean;
+  themes: string[];
 }
 
 export interface ScheduleConfig {

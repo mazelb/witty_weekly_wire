@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { THEMES, NEWS_SOURCES } from './constants';
 import { ThemeCard } from './components/ThemeCard';
 import { SourceChip } from './components/SourceChip';
 import { NewsletterPreview } from './components/NewsletterPreview';
 import { ScheduleModal } from './components/ScheduleModal';
+import { HistoryModal } from './components/HistoryModal';
 import { generateWeeklyNewsletter } from './services/geminiService';
 import { AppStatus, NewsletterData, CustomSource, ScheduleConfig } from './types';
 
@@ -20,8 +21,37 @@ function App() {
   const [status, setStatus] = useState<AppStatus>('selection');
   const [newsletterData, setNewsletterData] = useState<NewsletterData | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  // Modals
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [activeSchedule, setActiveSchedule] = useState<ScheduleConfig | null>(null);
+
+  // History State
+  const [history, setHistory] = useState<NewsletterData[]>([]);
+
+  // Load history from local storage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('newsletter_history');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Rehydrate Date objects
+        const hydrated = parsed.map((item: any) => ({
+          ...item,
+          generatedAt: new Date(item.generatedAt)
+        }));
+        setHistory(hydrated);
+      } catch (e) {
+        console.error("Failed to parse history", e);
+      }
+    }
+  }, []);
+
+  // Save history to local storage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('newsletter_history', JSON.stringify(history));
+  }, [history]);
 
   const toggleTheme = (id: string) => {
     setSelectedThemes(prev => 
@@ -74,7 +104,10 @@ function App() {
       const sourcesLabels = selectedSources.map(id => NEWS_SOURCES.find(s => s.id === id)?.name || id);
       
       const data = await generateWeeklyNewsletter(themesLabels, sourcesLabels, customSources, gmailConnected);
+      
       setNewsletterData(data);
+      // Add to history (newest first)
+      setHistory(prev => [data, ...prev]);
       setStatus('preview');
     } catch (error) {
       console.error(error);
@@ -87,6 +120,12 @@ function App() {
     setActiveSchedule(config);
     setIsScheduleModalOpen(false);
     setStatus('scheduled');
+  };
+
+  const handleSelectHistoryItem = (item: NewsletterData) => {
+    setNewsletterData(item);
+    setIsHistoryModalOpen(false);
+    setStatus('preview');
   };
 
   const handleSendEmail = (email: string) => {
@@ -164,10 +203,20 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-200 py-6 sm:py-10">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center">
-          <h1 className="text-4xl sm:text-5xl font-black text-gray-900 font-serif mb-4 tracking-tight">The Witty Weekly Wire</h1>
-          <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">Now with intelligent Gmail integration.</p>
+      <header className="bg-white border-b border-gray-200 py-6 sm:py-10 sticky top-0 z-30 shadow-sm">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 relative flex items-center justify-center">
+          <div className="text-center">
+            <h1 className="text-4xl sm:text-5xl font-black text-gray-900 font-serif mb-2 tracking-tight">The Witty Weekly Wire</h1>
+            <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto leading-relaxed">Now with intelligent Gmail integration.</p>
+          </div>
+          <button 
+            onClick={() => setIsHistoryModalOpen(true)}
+            className="absolute right-4 top-1/2 -translate-y-1/2 sm:top-auto sm:translate-y-0 text-gray-500 hover:text-indigo-600 hover:bg-gray-50 p-2 rounded-xl transition-all flex flex-col items-center gap-1"
+            title="Archive"
+          >
+             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+             <span className="text-[10px] font-bold uppercase tracking-widest">Archive</span>
+          </button>
         </div>
       </header>
 
@@ -287,6 +336,14 @@ function App() {
       </main>
 
       <ScheduleModal isOpen={isScheduleModalOpen} onClose={() => setIsScheduleModalOpen(false)} onConfirm={handleConfirmSchedule} />
+      <HistoryModal 
+        isOpen={isHistoryModalOpen} 
+        onClose={() => setIsHistoryModalOpen(false)} 
+        history={history} 
+        onSelect={handleSelectHistoryItem}
+        onClear={() => setHistory([])}
+      />
+      
       <footer className="bg-white border-t border-gray-200 py-12 text-center text-gray-400 text-sm">
         &copy; {new Date().getFullYear()} The Witty Weekly Wire.
       </footer>
